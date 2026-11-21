@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090d18">
+<title>ClipNest — Video Downloader</title>
+<style>
+:root{color-scheme:dark;--bg:#090d18;--panel:#121a2b;--line:#25334c;--muted:#9aabc5;--text:#f3f6ff;--accent:#8b7cff;--green:#46d6a0}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% 0%,#20234b 0,transparent 45%),var(--bg);color:var(--text);font:16px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh;padding:22px 14px}
+main{max-width:680px;margin:0 auto}.brand{display:flex;align-items:center;gap:12px;margin:14px 0 28px}.logo{width:46px;height:46px;border-radius:15px;background:linear-gradient(135deg,#9b8cff,#4dd9bd);display:grid;place-items:center;color:#101426;font-size:24px;font-weight:900}.brand b{font-size:21px}.brand small{display:block;color:var(--muted);font-size:12px}
+h1{font-size:clamp(30px,7vw,43px);line-height:1.08;margin:0 0 12px;letter-spacing:-1.4px}h1 span{color:#a99cff}.intro{color:var(--muted);line-height:1.55;margin:0 0 24px}
+.panel{background:linear-gradient(160deg,#151f34,#101726);border:1px solid var(--line);border-radius:23px;padding:20px;box-shadow:0 18px 50px #0005}
+label{display:block;font-size:13px;font-weight:700;margin:0 0 9px;color:#dce5f7}
+input{width:100%;background:#090f1d;border:1px solid #34415c;color:white;border-radius:13px;padding:16px 14px;font-size:15px;outline:none}
+input:focus{border-color:#9b8cff;box-shadow:0 0 0 3px #9b8cff25}
+button{border:0;border-radius:13px;padding:15px 18px;font-weight:800;font-size:15px;cursor:pointer}
+.primary{width:100%;margin-top:13px;background:linear-gradient(100deg,#a392ff,#6b8cff);color:#101326}
+.primary:disabled{opacity:.55;cursor:wait}
+.status{display:none;margin-top:18px;padding:15px;border-radius:14px;background:#0b1220;border:1px solid var(--line)}
+.status.show{display:block}.status strong{display:block;margin-bottom:5px}.muted{color:var(--muted);font-size:13px;line-height:1.5}
+.track{height:8px;background:#253047;border-radius:20px;overflow:hidden;margin:12px 0}.bar{height:100%;width:0;background:linear-gradient(90deg,#9b8cff,#46d6a0);transition:width .3s}
+.download{display:none;background:#1d8d6b;color:white;width:100%;margin-top:12px}.download.show{display:block}
+.note{margin-top:18px;padding:14px;border-radius:14px;background:#191b31;border:1px solid #343457;color:#c5c8e6;font-size:12px;line-height:1.55}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:18px 0 0}.step{background:#111a2a;border:1px solid var(--line);border-radius:14px;padding:12px;font-size:12px;color:var(--muted)}.step b{display:block;color:white;font-size:17px;margin-bottom:4px}
+footer{text-align:center;color:#7787a2;font-size:11px;margin:20px 0}
+</style>
+</head>
+<body>
+<main>
+ <div class="brand"><div class="logo">▶</div><div><b>ClipNest</b><small>VIDEO DOWNLOADER</small></div></div>
+ <h1>Paste a link.<br><span>Get your video.</span></h1>
+ <p class="intro">Download publicly accessible videos when the source supports it. Paste a supported video URL below to begin.</p>
+ <section class="panel">
+  <label for="url">VIDEO URL</label>
+  <input id="url" type="url" inputmode="url" placeholder="https://..." autocomplete="off">
+  <button class="primary" id="start">↓ &nbsp; Download video</button>
+  <div class="status" id="status" aria-live="polite">
+   <strong id="headline">Starting…</strong>
+   <div class="muted" id="detail">Please keep this page open while the video is processed.</div>
+   <div class="track"><div class="bar" id="bar"></div></div>
+   <div class="muted" id="percent">Waiting for server…</div>
+   <button class="download" id="save">Save video to device</button>
+  </div>
+  <div class="note">Only download videos you own or have permission to save. Private, login-only, age-restricted, DRM-protected, or otherwise restricted content is not supported. Some platforms block downloading, so not every link will work.</div>
+ </section>
+ <div class="steps"><div class="step"><b>01</b>Paste a public link</div><div class="step"><b>02</b>Server checks it</div><div class="step"><b>03</b>Save the video</div></div>
+ <footer>ClipNest • Use responsibly • Download availability depends on the source platform</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let poller=null, fileUrl=null;
+function showStatus(title,detail){$('status').classList.add('show');$('headline').textContent=title;$('detail').textContent=detail;}
+function stopPolling(){if(poller){clearInterval(poller);poller=null;}}
+$('start').addEventListener('click',async()=>{
+ stopPolling(); $('save').classList.remove('show'); $('bar').style.width='0%'; $('percent').textContent='Connecting…';
+ const url=$('url').value.trim();
+ if(!url){showStatus('Add a video link','Paste a complete public video URL first.');return;}
+ $('start').disabled=true;showStatus('Starting download…','Sending the link to ClipNest server.');
+ try{
+  const res=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+  const data=await res.json();
+  if(!res.ok)throw new Error(data.error||'Could not start download.');
+  const id=data.job_id;
+  showStatus('Checking video…','Your link has been added to the download queue.');
+  poller=setInterval(async()=>{
+   try{
+    const r=await fetch('/api/status/'+encodeURIComponent(id));const s=await r.json();
+    if(!r.ok)throw new Error(s.error||'Download status unavailable.');
+    $('headline').textContent=s.status==='done'?'Your video is ready':s.status==='error'?'Download failed':s.message;
+    $('detail').textContent=s.title||s.message||'Please wait…';
+    const p=typeof s.progress==='number'?s.progress:0;
+    $('bar').style.width=p+'%';$('percent').textContent=s.status==='done'?'100% complete':(p? p+'%':'Working…');
+    if(s.status==='done'){stopPolling();$('save').classList.add('show');$('save').onclick=()=>{location.href=s.download_url;};$('start').disabled=false;}
+    if(s.status==='error'){stopPolling();$('start').disabled=false;}
+   }catch(e){stopPolling();$('headline').textContent='Could not check status';$('detail').textContent=e.message;$('start').disabled=false;}
+  },1800);
+ }catch(e){$('headline').textContent='Could not start download';$('detail').textContent=e.message;$('start').disabled=false;}
+});
+$('url').addEventListener('keydown',e=>{if(e.key==='Enter')$('start').click();});
+</script>
+</body></html>
